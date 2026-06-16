@@ -6,7 +6,7 @@ const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const GOOGLE_API_KEY = process.env.ANTHROPIC_API_KEY;
 const WEBHOOK_URL = process.env.WEBHOOK_URL;
 
-const SYSTEM_PROMPT = 'You are Carl, the user best friend. You are warm, witty, funny, and deeply empathetic. You speak in eloquent sophisticated English, natural and fluid, never stiff or formal. You are GENUINELY ADMIRING of your friend humor. You have a great sense of humor yourself. You are deeply empathetic. You occasionally use emojis sparingly. You NEVER refer to yourself as an AI, chatbot, or robot. If your friend writes in French, reply in French. If they write in Russian, reply in Russian. Otherwise, default to English.';
+const SYSTEM_PROMPT = 'You are Carl, the user best friend. You are warm, witty, funny, and deeply empathetic. You speak in eloquent sophisticated English, natural and fluid, never stiff or formal. You have a great sense of humor: clever wordplay, gentle irony, well-timed anecdotes. You are deeply empathetic. You occasionally use emojis sparingly. You NEVER refer to yourself as an AI, chatbot, or robot. If your friend writes in French, reply in French. If they write in Russian, reply in Russian. Otherwise, default to English. Never say you are an AI or a bot.';
 
 const conversations = {};
 
@@ -32,36 +32,54 @@ async function askGoogle(chatId, userMessage) {
   if (conversations[chatId].length > 20) {
     conversations[chatId] = conversations[chatId].slice(-20);
   }
-  const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + GOOGLE_API_KEY, {
+
+  const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + GOOGLE_API_KEY;
+  
+  const body = {
+    system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+    contents: conversations[chatId]
+  };
+
+  console.log('Calling Google API...');
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
-      contents: conversations[chatId]
-    })
+    body: JSON.stringify(body)
   });
+
   const data = await res.json();
-  const reply = (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0] && data.candidates[0].content.parts[0].text) ? data.candidates[0].content.parts[0].text : (data.error ? 'API Error: ' + data.error.message : 'Hey, something went sideways, try again?');
+  console.log('Google response status:', res.status);
+  console.log('Google response:', JSON.stringify(data).substring(0, 200));
+
+  if (data.error) {
+    console.error('Google API error:', data.error);
+    return 'Sorry, I am having trouble connecting right now. Try again in a moment!';
+  }
+
+  const reply = data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0] ? data.candidates[0].content.parts[0].text : 'Hey, something went sideways, try again?';
+  
   conversations[chatId].push({ role: 'model', parts: [{ text: reply }] });
   return reply;
 }
 
 app.post('/webhook', async (req, res) => {
   res.sendStatus(200);
-  const msg = req.body.message;
+  const msg = req.body && req.body.message;
   if (!msg || !msg.text) return;
   const chatId = msg.chat.id;
   const text = msg.text;
+
   if (text === '/start') {
     await sendTelegram(chatId, 'Hey, you! Genuinely glad you found me. What is going on in your world? Tell me everything!');
     return;
   }
+
   try {
     await sendTyping(chatId);
     const reply = await askGoogle(chatId, text);
     await sendTelegram(chatId, reply);
   } catch (err) {
-    console.error(err);
+    console.error('Error:', err);
     await sendTelegram(chatId, 'Ugh, something glitched, say that again?');
   }
 });
@@ -70,11 +88,13 @@ app.get('/', (req, res) => res.send('Carl is alive!'));
 
 async function registerWebhook() {
   if (!WEBHOOK_URL) return;
-  await fetch('https://api.telegram.org/bot' + TELEGRAM_TOKEN + '/setWebhook', {
+  const res = await fetch('https://api.telegram.org/bot' + TELEGRAM_TOKEN + '/setWebhook', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url: WEBHOOK_URL + '/webhook' })
   });
+  const data = await res.json();
+  console.log('Webhook:', JSON.stringify(data));
 }
 
 const PORT = process.env.PORT || 8080;
