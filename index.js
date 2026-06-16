@@ -77,7 +77,7 @@ async function registerWebhook() {
   });
 }
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 app.listen(PORT, async () => {
   console.log('Carl bot running on port ' + PORT);
   await registerWebhook();
