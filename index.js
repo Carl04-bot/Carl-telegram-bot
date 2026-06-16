@@ -41,7 +41,7 @@ async function askGoogle(chatId, userMessage) {
     })
   });
   const data = await res.json();
-  const reply = data.candidates[0].content.parts[0].text || 'Hey, something went sideways, try again?';
+  const reply = (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0] && data.candidates[0].content.parts[0].text) ? data.candidates[0].content.parts[0].text : (data.error ? 'API Error: ' + data.error.message : 'Hey, something went sideways, try again?');
   conversations[chatId].push({ role: 'model', parts: [{ text: reply }] });
   return reply;
 }
